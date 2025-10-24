@@ -470,5 +470,172 @@
             "Medium":"not param[1].is_constant()",
             "Low": "param[1].number_value() in [0,1] or param[0].used_as_index()"
         }
+    },{
+        "name": "Integer Overflow in Allocation",
+        "function_names":[
+            "malloc",
+            "calloc",
+            "realloc",
+            "valloc",
+            "pvalloc",
+            "aligned_alloc",
+            "memalign",
+            "posix_memalign"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[0].has_multiplication() and param[0].involves_user_controlled_arithmetic() and not param[0].is_checked_for_overflow()",
+            "Medium":"param[0].has_arithmetic_operation() and not param[0].is_constant() and not param[0].is_checked_for_overflow()",
+            "Low":"param[0].has_arithmetic_operation() and not param[0].is_constant()"
+        }
+    },{
+        "name": "Integer Overflow in Allocation",
+        "function_names":[
+            "calloc"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"(param[0].has_multiplication() or param[1].has_multiplication()) and (param[0].involves_user_controlled_arithmetic() or param[1].involves_user_controlled_arithmetic())",
+            "Medium":"(not param[0].is_constant() or not param[1].is_constant()) and (param[0].has_arithmetic_operation() or param[1].has_arithmetic_operation())",
+            "Low":"not param[0].is_constant() and not param[1].is_constant()"
+        }
+    },{
+        "name": "Integer Overflow in Buffer Operation",
+        "function_names":[
+            "memcpy",
+            "memmove",
+            "memset",
+            "wmemcpy",
+            "wmemmove",
+            "bcopy"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[2].has_multiplication() and param[2].involves_user_controlled_arithmetic() and not param[2].is_checked_for_overflow()",
+            "Medium":"param[2].has_arithmetic_operation() and not param[2].is_constant() and not param[2].is_checked_for_overflow()",
+            "Low":"param[2].has_arithmetic_operation() and not param[2].is_constant()"
+        }
+    },{
+        "name": "Integer Overflow in Buffer Operation",
+        "function_names":[
+            "read",
+            "write",
+            "send",
+            "recv",
+            "fread",
+            "fwrite"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[2].has_multiplication() and param[2].involves_user_controlled_arithmetic() and not param[2].is_checked_for_overflow()",
+            "Medium":"param[2].has_arithmetic_operation() and not param[2].is_constant() and not param[2].is_checked_for_overflow()",
+            "Low":"param[2].has_arithmetic_operation()"
+        }
+    },{
+        "name": "Integer Overflow in String Operation",
+        "function_names":[
+            "strncpy",
+            "strncat",
+            "wcsncpy",
+            "wcsncat",
+            "strlcpy",
+            "strlcat"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[2].has_multiplication() and not param[2].is_checked_for_overflow()",
+            "Medium":"param[2].has_arithmetic_operation() and not param[2].is_constant() and not param[2].is_checked_for_overflow()",
+            "Low":"param[2].has_arithmetic_operation()"
+        }
+    },{
+        "name": "Integer Overflow with Left Shift",
+        "function_names":[
+            "malloc",
+            "calloc",
+            "realloc",
+            "memcpy",
+            "memmove",
+            "memset"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"any([param[i].has_left_shift() and not param[i].is_checked_for_overflow() for i in range(min(3, param_count))])",
+            "Medium":"any([param[i].has_left_shift() for i in range(min(3, param_count))])",
+            "Low":"False"
+        }
+    },{
+        "name": "Integer Underflow",
+        "function_names":[
+            "malloc",
+            "calloc",
+            "realloc",
+            "memcpy",
+            "memmove",
+            "memset",
+            "read",
+            "write",
+            "strncpy",
+            "strncat"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"any([param[i].has_subtraction() and not param[i].is_sign_compared() and not param[i].is_checked_for_overflow() for i in range(min(3, param_count))])",
+            "Medium":"any([param[i].has_subtraction() and not param[i].is_constant() for i in range(min(3, param_count))])",
+            "Low":"False"
+        }
+    },{
+        "name": "Integer Truncation",
+        "function_names":[
+            "malloc",
+            "calloc",
+            "realloc",
+            "memcpy",
+            "memmove",
+            "memset",
+            "read",
+            "write"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"any([param[i].has_narrowing_cast() and not param[i].is_constant() and not param[i].is_checked_for_overflow() for i in range(min(3, param_count))])",
+            "Medium":"any([param[i].has_narrowing_cast() and not param[i].is_constant() for i in range(min(3, param_count))])",
+            "Low":"False"
+        }
+    },{
+        "name": "Array Index Integer Overflow",
+        "function_names":[
+            "Array Access"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[1].has_multiplication() and param[1].involves_user_controlled_arithmetic() and not param[1].is_checked_for_overflow()",
+            "Medium":"param[1].has_arithmetic_operation() and not param[1].is_constant() and not param[1].is_checked_for_overflow()",
+            "Low":"param[1].has_arithmetic_operation() and not param[1].is_constant()"
+        }
+    },{
+        "name": "Size Calculation Overflow",
+        "function_names":[
+            "snprintf",
+            "vsnprintf",
+            "swprintf",
+            "vswprintf"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[1].has_multiplication() and param[1].involves_user_controlled_arithmetic() and not param[1].is_checked_for_overflow()",
+            "Medium":"param[1].has_arithmetic_operation() and not param[1].is_constant() and not param[1].is_checked_for_overflow()",
+            "Low":"param[1].has_arithmetic_operation()"
+        }
+    },{
+        "name": "Integer Overflow in Assignment",
+        "function_names":[
+            "Integer Operation"
+        ],
+        "wrappers":false,
+        "mark_if":{
+            "High":"param[1].has_multiplication() and not param[1].is_constant() and not param[1].is_checked_for_overflow()",
+            "Medium":"param[1].has_arithmetic_operation() and not param[1].is_constant() and not param[1].is_checked_for_overflow()",
+            "Low":"param[1].has_narrowing_cast() and param[1].has_arithmetic_operation()"
+        }
     }
 ]

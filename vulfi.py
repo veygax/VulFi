@@ -146,6 +146,8 @@ class VulFiScanner:
                     xrefs_dict = self.get_array_accesses()
                 elif rule["function_names"] == ["Loop Check"]:
                     xrefs_dict = self.get_loops()
+                elif rule["function_names"] == ["Integer Operation"]:
+                    xrefs_dict = self.get_integer_operations()
                 else:
                     xrefs_dict = self.find_xrefs_by_name(rule["function_names"],rule["wrappers"])
             except:
@@ -181,6 +183,8 @@ class VulFiScanner:
                     if rule["function_names"] == ["Array Access"]:
                         param = [VulFiScanner.Param(self,scanned_function_xref_tuple[3],scanned_function_xref,scanned_function_name),VulFiScanner.Param(self,scanned_function_xref_tuple[4],scanned_function_xref,scanned_function_name)]
                     elif rule["function_names"] == ["Loop Check"]:
+                        param = [VulFiScanner.Param(self,scanned_function_xref_tuple[3],scanned_function_xref,scanned_function_name),VulFiScanner.Param(self,scanned_function_xref_tuple[4],scanned_function_xref,scanned_function_name)]
+                    elif rule["function_names"] == ["Integer Operation"]:
                         param = [VulFiScanner.Param(self,scanned_function_xref_tuple[3],scanned_function_xref,scanned_function_name),VulFiScanner.Param(self,scanned_function_xref_tuple[4],scanned_function_xref,scanned_function_name)]
                     else:
                         params_raw = self.get_xref_parameters(scanned_function_xref,scanned_function_name)
@@ -355,6 +359,85 @@ class VulFiScanner:
                 except Exception as e:
                     pass
         return array_access_list
+
+    def get_integer_operations(self):
+        """Find potentially dangerous integer arithmetic operations"""
+        int_ops_list = {"Integer Operation":[]}
+        if self.hexrays:
+            for func in self.functions_list:
+                try:
+                    decompiled_function = ida_hexrays.decompile(func)
+                    if decompiled_function is None:
+                        # Decompilation failed
+                        continue
+
+                    for citem in decompiled_function.treeitems:
+                        # Look for assignments with arithmetic on the right side
+                        if citem.op >= ida_hexrays.cot_asg and citem.op <= ida_hexrays.cot_asgumod:
+                            expr = citem.to_specific_type
+                            if expr.y:  # Right side of assignment
+                                # Check if right side has arithmetic operations
+                                if self.__has_dangerous_arithmetic(expr.y):
+                                    # Store: (address, name, display_name, left_side, right_side)
+                                    int_ops_list["Integer Operation"].append(
+                                        (citem.ea, "Integer Operation", "Integer Operation", expr.x, expr.y)
+                                    )
+                except Exception as e:
+                    pass
+        return int_ops_list
+
+    def __has_dangerous_arithmetic(self, expr):
+        """Check if expression contains potentially dangerous arithmetic"""
+        if not expr:
+            return False
+
+        dangerous_ops = [
+            ida_hexrays.cot_mul,     # Multiplication (high overflow risk)
+            ida_hexrays.cot_add,     # Addition
+            ida_hexrays.cot_shl,     # Left shift
+        ]
+
+        # Direct dangerous operation
+        if expr.op in dangerous_ops:
+            return True
+
+        # Cast of dangerous operation
+        if expr.op == ida_hexrays.cot_cast:
+            if expr.x and expr.x.op in dangerous_ops:
+                return True
+            # Also check for narrowing cast (potential truncation)
+            try:
+                if expr.type and expr.x and expr.x.type:
+                    dest_size = expr.type.get_size()
+                    src_size = expr.x.type.get_size()
+                    if dest_size < src_size:
+                        # Narrowing cast with arithmetic
+                        return self.__has_arithmetic_recursive(expr.x)
+            except:
+                pass
+
+        return False
+
+    def __has_arithmetic_recursive(self, expr):
+        """Recursively check for any arithmetic operations"""
+        if not expr:
+            return False
+
+        arithmetic_ops = [
+            ida_hexrays.cot_add, ida_hexrays.cot_sub, ida_hexrays.cot_mul,
+            ida_hexrays.cot_udiv, ida_hexrays.cot_sdiv, ida_hexrays.cot_shl
+        ]
+
+        if expr.op in arithmetic_ops:
+            return True
+
+        # Check sub-expressions
+        if hasattr(expr, 'x') and expr.x and self.__has_arithmetic_recursive(expr.x):
+            return True
+        if hasattr(expr, 'y') and expr.y and self.__has_arithmetic_recursive(expr.y):
+            return True
+
+        return False
 
     def prepare_functions_list(self):
         self.functions_list = []
@@ -945,6 +1028,236 @@ class VulFiScanner:
             custom_visitor.apply_to(decompiled_function.body, None)
 
             return matched["set_to_null"]
+
+        # Integer overflow/underflow detection methods
+        def has_arithmetic_operation(self):
+            """Check if parameter involves arithmetic operations"""
+            if self.scanner_instance.hexrays:
+                return self.has_arithmetic_operation_hexrays()
+            else:
+                return False
+
+        def has_arithmetic_operation_hexrays(self):
+            """Detect arithmetic operations in parameter expression"""
+            if not self.param:
+                return False
+
+            arithmetic_ops = [
+                ida_hexrays.cot_add,     # Addition
+                ida_hexrays.cot_sub,     # Subtraction
+                ida_hexrays.cot_mul,     # Multiplication
+                ida_hexrays.cot_udiv,    # Unsigned division
+                ida_hexrays.cot_sdiv,    # Signed division
+                ida_hexrays.cot_umod,    # Unsigned modulo
+                ida_hexrays.cot_smod,    # Signed modulo
+                ida_hexrays.cot_shl,     # Shift left
+                ida_hexrays.cot_sshr,    # Signed shift right
+                ida_hexrays.cot_ushr     # Unsigned shift right
+            ]
+
+            # Check if parameter itself is an arithmetic operation
+            if self.param.op in arithmetic_ops:
+                return True
+
+            # Check if parameter is cast of arithmetic operation
+            if self.param.op == ida_hexrays.cot_cast:
+                if self.param.x and self.param.x.op in arithmetic_ops:
+                    return True
+
+            return False
+
+        def has_multiplication(self):
+            """Check if parameter involves multiplication (high risk for overflow)"""
+            if self.scanner_instance.hexrays:
+                return self.has_multiplication_hexrays()
+            else:
+                return False
+
+        def has_multiplication_hexrays(self):
+            """Detect multiplication operations"""
+            if not self.param:
+                return False
+
+            param = self.param.x if self.param.op == ida_hexrays.cot_cast else self.param
+
+            # Direct multiplication
+            if param.op == ida_hexrays.cot_mul:
+                return True
+
+            # Multiplication in sub-expressions
+            exprs = [param]
+            while exprs:
+                expr = exprs.pop(0)
+                if not expr:
+                    continue
+                if expr.op == ida_hexrays.cot_mul:
+                    return True
+                if hasattr(expr, 'x') and expr.x:
+                    exprs.append(expr.x)
+                if hasattr(expr, 'y') and expr.y:
+                    exprs.append(expr.y)
+
+            return False
+
+        def has_addition(self):
+            """Check if parameter involves addition"""
+            if self.scanner_instance.hexrays:
+                return self.has_addition_hexrays()
+            else:
+                return False
+
+        def has_addition_hexrays(self):
+            """Detect addition operations"""
+            if not self.param:
+                return False
+
+            param = self.param.x if self.param.op == ida_hexrays.cot_cast else self.param
+
+            if param.op == ida_hexrays.cot_add:
+                return True
+
+            return False
+
+        def has_subtraction(self):
+            """Check if parameter involves subtraction (risk for underflow)"""
+            if self.scanner_instance.hexrays:
+                return self.has_subtraction_hexrays()
+            else:
+                return False
+
+        def has_subtraction_hexrays(self):
+            """Detect subtraction operations"""
+            if not self.param:
+                return False
+
+            param = self.param.x if self.param.op == ida_hexrays.cot_cast else self.param
+
+            if param.op == ida_hexrays.cot_sub:
+                return True
+
+            return False
+
+        def is_checked_for_overflow(self):
+            """Check if there's overflow protection (comparison against max values)"""
+            if self.scanner_instance.hexrays:
+                return self.is_checked_for_overflow_hexrays()
+            else:
+                return False
+
+        def is_checked_for_overflow_hexrays(self):
+            """Detect if parameter is checked for overflow before use"""
+            if not self.param:
+                return False
+
+            try:
+                decompiled_function = ida_hexrays.decompile(self.call_xref)
+                if decompiled_function is None:
+                    return False
+
+                # Get the variable we're tracking
+                if self.param.op == ida_hexrays.cot_cast:
+                    param = self.param.x
+                else:
+                    param = self.param
+
+                # Look for comparisons with this variable before the call
+                for citem in decompiled_function.treeitems:
+                    if citem.ea >= self.call_xref:
+                        # We've passed the call, stop looking
+                        break
+
+                    # Look for comparison operations
+                    if citem.op >= ida_hexrays.cot_eq and citem.op <= ida_hexrays.cot_ult:
+                        # Check if our parameter is involved in this comparison
+                        if self.__is_param_in_expr(citem, param):
+                            # Check if compared against a constant (likely max value check)
+                            if citem.to_specific_type.y and citem.to_specific_type.y.op == ida_hexrays.cot_num:
+                                return True
+
+                return False
+            except:
+                return False
+
+        def __is_param_in_expr(self, expr, param):
+            """Helper to check if parameter is used in expression"""
+            if not expr or not param:
+                return False
+
+            exprs = [expr]
+            while exprs:
+                current = exprs.pop(0)
+                if not current:
+                    continue
+
+                if current == param:
+                    return True
+
+                if hasattr(current, 'x') and current.x:
+                    exprs.append(current.x)
+                if hasattr(current, 'y') and current.y:
+                    exprs.append(current.y)
+
+            return False
+
+        def has_unchecked_integer_operation(self):
+            """Check for unchecked integer operations that could overflow/underflow"""
+            if not self.scanner_instance.hexrays:
+                return False
+
+            # Has arithmetic operation but not checked for overflow
+            return self.has_arithmetic_operation() and not self.is_checked_for_overflow()
+
+        def involves_user_controlled_arithmetic(self):
+            """Check if arithmetic involves non-constant operands (user-controlled)"""
+            if not self.scanner_instance.hexrays:
+                return False
+
+            if not self.has_arithmetic_operation():
+                return False
+
+            try:
+                param = self.param.x if self.param.op == ida_hexrays.cot_cast else self.param
+
+                # Check if both operands are non-constant
+                if hasattr(param, 'x') and hasattr(param, 'y'):
+                    x_const = param.x.op == ida_hexrays.cot_num if param.x else False
+                    y_const = param.y.op == ida_hexrays.cot_num if param.y else False
+
+                    # If at least one operand is not constant, it could be user-controlled
+                    return not (x_const and y_const)
+            except:
+                pass
+
+            return False
+
+        def has_left_shift(self):
+            """Check for left shift operations (can cause overflow)"""
+            if not self.scanner_instance.hexrays:
+                return False
+
+            if not self.param:
+                return False
+
+            param = self.param.x if self.param.op == ida_hexrays.cot_cast else self.param
+            return param.op == ida_hexrays.cot_shl
+
+        def has_narrowing_cast(self):
+            """Check for casts that narrow the type (potential truncation)"""
+            if not self.scanner_instance.hexrays:
+                return False
+
+            if not self.param or self.param.op != ida_hexrays.cot_cast:
+                return False
+
+            try:
+                # Get type sizes
+                dest_size = self.param.type.get_size()
+                src_size = self.param.x.type.get_size() if self.param.x else 0
+
+                # Narrowing cast if destination is smaller than source
+                return dest_size < src_size
+            except:
+                return False
 
 
 
